@@ -3,11 +3,13 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"os"
 )
 
 type File struct {
 	Src   string
 	Dst   string
+	Chmod os.FileMode
 	Unzip bool
 }
 

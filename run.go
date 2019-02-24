@@ -123,11 +123,11 @@ func resolve(d dest, token string) error {
 		return nil
 	} else {
 		log.Printf("download %s to %s", url, d.Dst)
-		return download(url, d.Dst)
+		return download(url, d.Dst, d.Chmod)
 	}
 }
 
-func download(url, path string) error {
+func download(url, path string, chmod os.FileMode) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -146,6 +146,12 @@ func download(url, path string) error {
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
+
+	if chmod > 0 {
+		if err = os.Chmod(path, chmod); err != nil {
+			return err
+		}
+	}
 	return err
 }
 
