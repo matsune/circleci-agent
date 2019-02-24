@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -60,7 +63,32 @@ func Run(target string) error {
 		return err
 	}
 
+	var out string
+	log.Println("Exec stop...")
+	if out, err = execute(p.Stop); err != nil {
+		return err
+	}
+	log.Print(out)
+
+	log.Println("Exec start...")
+	if out, err = execute(p.Start); err != nil {
+		return err
+	}
+	log.Print(out)
+
 	return nil
+}
+
+func execute(str string) (string, error) {
+	args := strings.Split(str, " ")
+	cmd := exec.Command(args[0], args[1:]...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return stdout.String(), nil
 }
 
 type dest struct {
