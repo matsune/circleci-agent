@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"errors"
@@ -22,17 +22,17 @@ type Project struct {
 	Start  string
 }
 
-func (p *Project) buildURL(token string) (string, error) {
+func (p *Project) buildURL() (string, error) {
 	if len(p.User) == 0 {
 		return "", errors.New("user is empty")
 	}
 	if len(p.Name) == 0 {
 		return "", errors.New("name is empty")
 	}
-	if len(token) == 0 {
-		return "", errors.New("Token is empty")
+	if len(p.Token) == 0 {
+		return "", errors.New("token is empty")
 	}
-	u := fmt.Sprintf("https://circleci.com/api/v1.1/project/%s/%s/%s/latest/artifacts?circle-token=%s", p.VCS, p.User, p.Name, token)
+	u := fmt.Sprintf("https://circleci.com/api/v1.1/project/%s/%s/%s/latest/artifacts?circle-token=%s", p.VCS, p.User, p.Name, p.Token)
 	if len(p.Branch) > 0 {
 		u += fmt.Sprintf("&branch=%s", p.Branch)
 	}
