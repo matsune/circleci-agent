@@ -6,8 +6,9 @@ import (
 )
 
 type File struct {
-	Src string
-	Dst string
+	Src   string
+	Dst   string
+	Unzip bool
 }
 
 type Project struct {

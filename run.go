@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -39,27 +41,28 @@ func Run(target string) error {
 	if err != nil {
 		return err
 	}
+	log.Println(arts)
 
 	d := []dest{}
 	for _, art := range arts {
-		var dst string
+		var file *File
 		for _, f := range p.Files {
 			if art.Path == f.Src {
-				dst = f.Dst
+				file = &f
 				break
 			}
 		}
-		if len(dst) == 0 {
+		if file == nil {
 			log.Printf("could not find destination for %s\n", art.Path)
 		} else {
 			d = append(d, dest{
 				Artifact: art,
-				Dst:      dst,
+				File:     *file,
 			})
 		}
 	}
 
-	if err = resolves(d); err != nil {
+	if err = resolves(d, p.Token); err != nil {
 		return err
 	}
 
@@ -93,15 +96,15 @@ func execute(str string) (string, error) {
 
 type dest struct {
 	Artifact
-	Dst string
+	File
 }
 
-func resolves(dests []dest) error {
+func resolves(dests []dest, token string) error {
 	eg := errgroup.Group{}
 	for _, d := range dests {
 		d := d
 		eg.Go(func() error {
-			return resolve(d)
+			return resolve(d, token)
 		})
 	}
 	if err := eg.Wait(); err != nil {
@@ -110,13 +113,21 @@ func resolves(dests []dest) error {
 	return nil
 }
 
-func resolve(d dest) error {
-	return download(d.Artifact.URL, d.Dst)
+func resolve(d dest, token string) error {
+	url := d.URL + "?circle-token=" + token
+	if d.Unzip {
+		_, err := unzip(url, d.Dst)
+		if err != nil {
+			return err
+		}
+		return nil
+	} else {
+		log.Printf("download %s to %s", url, d.Dst)
+		return download(url, d.Dst)
+	}
 }
 
 func download(url, path string) error {
-	log.Printf("download %s to %s", url, path)
-
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -136,4 +147,65 @@ func download(url, path string) error {
 
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+func unzip(url string, dest string) ([]string, error) {
+	var filenames []string
+
+	r, err := readZipURL(url)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, f := range r.File {
+		rc, err := f.Open()
+		if err != nil {
+			return filenames, err
+		}
+		defer rc.Close()
+
+		fpath := filepath.Join(dest, f.Name)
+		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return filenames, fmt.Errorf("%s: illegal file path", fpath)
+		}
+
+		filenames = append(filenames, fpath)
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(fpath, os.ModePerm)
+		} else {
+			if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+				return filenames, err
+			}
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				return filenames, err
+			}
+			_, err = io.Copy(outFile, rc)
+			outFile.Close()
+			if err != nil {
+				return filenames, err
+			}
+		}
+	}
+	return filenames, nil
+}
+
+func readZip(res *http.Response) (*zip.Reader, error) {
+	b, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read response body with error %s", err)
+	}
+	r := bytes.NewReader(b)
+	return zip.NewReader(r, int64(r.Len()))
+}
+
+func readZipURL(url string) (*zip.Reader, error) {
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Fetching zip URL %s failed with error %s.", url, err)
+	}
+	defer res.Body.Close()
+	return readZip(res)
 }
